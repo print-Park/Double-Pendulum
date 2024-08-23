@@ -1,0 +1,130 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Define constants
+G = 9.81  # acceleration due to gravity (m/s^2)
+L1 = 1.0  # length of pendulum 1 (m)
+L2 = 1.0  # length of pendulum 2 (m)
+M1 = 1.0  # mass of pendulum 1 (kg)
+M2 = 1.0  # mass of pendulum 2 (kg)
+
+def derivs(state):
+    theta1, omega1, theta2, omega2 = state
+    dtheta1_dt = omega1
+    domega1_dt = (-G * (2 * M1 + M2) * np.sin(theta1) - M2 * G * np.sin(theta1 - 2 * theta2) - 2 * np.sin(theta1 - theta2) * M2 * (omega2 ** 2 * L2 + omega1 ** 2 * L1 * np.cos(theta1 - theta2))) / (L1 * (2 * M1 + M2 - M2 * np.cos(2 * theta1 - 2 * theta2)))
+    dtheta2_dt = omega2
+    domega2_dt = (2 * np.sin(theta1 - theta2) * (omega1 ** 2 * L1 * (M1 + M2) + G * (M1 + M2) * np.cos(theta1) + omega2 ** 2 * L2 * M2 * np.cos(theta1 - theta2))) / (L2 * (2 * M1 + M2 - M2 * np.cos(2 * theta1 - 2 * theta2)))
+    return np.array([dtheta1_dt, domega1_dt, dtheta2_dt, domega2_dt])
+
+
+def rk4_step(state, dt):
+    k1 = derivs(state)
+    k2 = derivs(state + 0.5 * dt * k1)
+    k3 = derivs(state + 0.5 * dt * k2)
+    k4 = derivs(state + dt * k3)
+    return state + (dt / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
+
+def wrap_angle(theta):
+    return (theta + np.pi) % (2 * np.pi) - np.pi
+
+def calculate_energy(state):
+    theta1, omega1, theta2, omega2 = state
+    # Kinetic energy
+    K1 = 0.5 * M1 * (L1 * omega1)**2
+    K2 = 0.5 * M2 * ((L1 * omega1)**2 + (L2 * omega2)**2 + 2 * L1 * L2 * omega1 * omega2 * np.cos(theta1 - theta2))
+    K = K1 + K2
+
+    # Potential energy
+    U1 = -M1 * G * L1 * np.cos(theta1)
+    U2 = -M2 * G * (L1 * np.cos(theta1) + L2 * np.cos(theta2))
+    U = U1 + U2
+
+    # Total mechanical energy
+    E = K + U
+    return E
+
+def generate_initial_conditions(total_energy, num_conditions):
+    initial_conditions = []
+
+
+    while len(initial_conditions) < num_conditions:
+        if len(initial_conditions) == 0:
+          theta1 = 0
+          theta2 = -0.8
+          omega2 = 0.3
+        if len(initial_conditions) == 1:
+          theta1 = 0
+          theta2 = -0.8
+          omega2 = 0.2
+        # Calculate potential energy
+        U1 = -M1 * G * L1 * np.cos(theta1)
+        U2 = -M2 * G * (L1 * np.cos(theta1) + L2 * np.cos(theta2))
+        U = U1+U2
+
+        # Remaining energy to be distributed as kinetic energy
+        K = total_energy - U
+
+        # Calculate omega1 based on the remaining kinetic energy
+        A = 0.5 * (M1 * L1**2 + M2 * L1**2)
+        B = M2 * L1 * L2 * omega2 * np.cos(theta1 - theta2)
+        C = 0.5 * M2 * L2**2 * omega2**2 - K
+
+        discriminant = B**2 - 4*A*C
+
+        if discriminant < 0:
+            continue
+
+        omega1_pos = (-B + np.sqrt(discriminant)) / (2*A)
+        omega1_neg = (-B - np.sqrt(discriminant)) / (2*A)
+        initial_conditions.append([theta1, omega1_pos, theta2, omega2])
+
+    return initial_conditions
+
+# Time parameters
+t_start = 0
+t_end = 70
+dt = 0.01
+t_points = np.arange(t_start, t_end, dt)
+
+# Simulate and plot Poincaré sections for multiple initial conditions
+num_conditions = 2
+total_energy = -18.0  # Total mechanical energy for initial conditions
+
+plt.figure(figsize=(10, 8))
+
+# Generate initial conditions
+initial_conditions = generate_initial_conditions(total_energy, num_conditions)
+
+energy = []
+
+for i, state in enumerate(initial_conditions):
+    state = np.array(state)
+    # Simulate
+    poincare2 = []
+    poincare3 = []
+    energy = []
+    prev_theta1 = state[0]
+    for t in t_points:
+        state[0] = wrap_angle(state[0])  # Wrap theta1
+        state[2] = wrap_angle(state[2])  # Wrap theta2
+        state = rk4_step(state, dt)
+        energy.append(calculate_energy(state))
+        if prev_theta1 * state[0] < 0 and state[1] > 0:
+            poincare2.append(state[2])
+            poincare3.append(state[3])
+
+        prev_theta1 = state[0]
+
+    # Plot Poincaré section
+    plt.scatter(poincare2, poincare3, s=10, label=f'Initial Condition {i+1}')
+
+plt.xlabel('theta2')
+plt.ylabel('omega2')
+plt.title(f'Poincaré Sections for Multiple Initial Conditions (Total Energy = {total_energy})')
+plt.legend()
+plt.grid(True)
+plt.show()
+
+print(calculate_energy(initial_conditions[0]))
+print(initial_conditions[0])
+print(initial_conditions[1])
